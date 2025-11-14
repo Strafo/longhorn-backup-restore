@@ -1,58 +1,92 @@
-Restores PV & PVC from backup. Created for FluxCD startup. Created with [Longhorn python client](https://longhorn.io/docs/1.2.2/references/longhorn-client-python/).  
+# Longhorn Backup Restore
 
-## Environment variables  
+Restores Longhorn volumes from backup. Automatically finds and restores the most recent completed backup for a given volume.
 
-**LONGHORN_URL**  
-Point to longhorn frontend, ie. "http://longhorn-frontend.longhorn-system/v1". Required  
+## Features
 
-**VOLUME_HANDLE**  
-Longhorn volume handle name. Searches backups with volume name. Required  
+- 🔍 Automatically finds the latest completed backup for a volume
+- 🔄 Restores volume with original configuration from backup metadata
+- 📝 Configurable logging levels
+- 🐳 Lightweight Docker image based on Python 3.12-slim
 
-**VOLUME_SIZE**  
-Optional. Restored volume size in bytes. I don't recommend messing with this, I'm too lazy for creating parsing logic. Reads from backup kubernetesStatus if not defined  
+## Environment Variables
 
-**PV_NAME**  
-Kubernetes persistent volume name. Creates on restore. Optional, reads from backup kubernetesStatus if not defined  
+**LONGHORN_URL** (Required)  
+Longhorn API endpoint URL. Default: `http://longhorn-frontend.longhorn-system.svc.cluster.local`
 
-**PVC_NAME**  
-Kubernetes persistent volume claim name. Creates on restore. Optional, reads from backup kubernetesStatus if not defined  
+**VOLUME_HANDLE** (Required)  
+Longhorn volume name to restore from backup.
 
-**PVC_NAMESPACE**  
-Kubernetes namespace for pvc. Optional
+**NUMBER_OF_REPLICAS** (Optional)  
+Number of replicas for the restored volume. Default: `3`
 
-**CREATE_PV**  
-Create persistent volume during restoration? Defaults to "true"  
+**LOG_LEVEL** (Optional)  
+Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Default: `INFO`
 
-**CREATE_PVC**  
-Create persistent volume claim during restoration? Defaults to "true"  
+## How It Works
 
-## Example kubernetes job
+1. Fetches all backup volumes from Longhorn
+2. Finds the specified volume by name
+3. Retrieves all backups for that volume
+4. Selects the most recent completed backup
+5. Restores the volume using backup metadata (size, block size, backing image, etc.)
+
+## Example Kubernetes Job
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: homebridge-data-restore
-  namespace: iot
+  name: authelia-volume-restore
+  namespace: authelia
 spec:
   template:
     spec:
       containers:
-      - name: pi
-        image: wahooli/longhorn-backup-restore:latest
-        env:
-        - name: LONGHORN_URL
-          value: http://longhorn-frontend.longhorn-system/v1 # default, can be omitted
-        - name: VOLUME_HANDLE
-          value: [volume-handle-name-here]
-        - name: CREATE_PV
-          value: "false" # will not create persistent volume and claims
-        - name: CREATE_PVC
-          value: "false"
+        - name: restore
+          image: your-registry/longhorn-backup-restore:latest
+          env:
+            - name: LONGHORN_URL
+              value: http://longhorn-frontend.longhorn-system.svc.cluster.local
+            - name: VOLUME_HANDLE
+              value: authelia-production-vol
+            - name: NUMBER_OF_REPLICAS
+              value: "3"
+            - name: LOG_LEVEL
+              value: INFO
       restartPolicy: Never
-  backoffLimit: 0
-
+  backoffLimit: 3
 ```
 
-## Bulk image
-There's also `bulk-latest` image tag, which accepts everything else, except LONGHORN_URL configuration as json. 
+## Building
+
+```bash
+docker build -t longhorn-backup-restore:latest .
+```
+
+## Local Testing
+
+Enable the port forwarding to access Longhorn API from localhost.
+Set the required environment variables and run the script
+
+```bash
+export LONGHORN_URL=http://localhost:8000
+export VOLUME_HANDLE=my-volume
+export NUMBER_OF_REPLICAS=2
+export LOG_LEVEL=DEBUG
+python3 backup-restore.py
+```
+
+## Requirements
+
+- Python 3.12+
+- `requests` library (see `requirements.txt`)
+- Access to Longhorn API endpoint
+
+## Notes
+
+- The script restores only the Longhorn volume, not Kubernetes PV/PVC objects
+- To create PV/PVC, you need to handle that separately (e.g., using Helm charts or Kubernetes manifests)
+- The most recent completed backup is automatically selected
+- Volume configuration (size, block size, backing image) is read from backup metadata
+- For a more complete version which also creates PV/PVC objects, see the [original repository](https://github.com/wahooli/longhorn-backup-restore)

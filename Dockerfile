@@ -1,29 +1,31 @@
-FROM python:slim-bullseye
-ARG longhorn_py_url=https://raw.githubusercontent.com/longhorn/longhorn-tests/master/manager/integration/tests/longhorn.py
+FROM python:3.12-slim
 ARG user=python
-
-RUN useradd -ms /bin/bash $user
-RUN apt-get -qq update && apt-get -qq install --no-install-recommends -y \
-    curl 
+RUN set -ex && \
+    apt-get -qq update && \
+    apt-get -qq install --no-install-recommends -y \
+    curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd -ms /bin/bash $user 
 
 USER $user
 WORKDIR /home/$user
 ENV PATH="/home/${user}/.local/bin:${PATH}"
 
-# setup venv and download longhorn.py
-RUN pip install --upgrade pip && python3 -m venv backup-restore-env && \
-    curl "${longhorn_py_url}" --output longhorn.py --silent
-
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-ENV LONGHORN_URL="http://longhorn-frontend.longhorn-system/v1"
-# volume id or name
+# Longhorn configuration
+ENV LONGHORN_URL="http://longhorn-frontend.longhorn-system.svc.cluster.local"
+# Volume id or name to restore
 ENV VOLUME_HANDLE=""
+ENV NUMBER_OF_REPLICAS="2"
+ENV LOG_LEVEL="INFO"
 
-ENV CREATE_PV="true"
-ENV CREATE_PVC="true"
-COPY longhorn_common.py .
-COPY backup-restore.py .
+# Copy application files
+COPY --chown=$user:$user requirements.txt .
+COPY --chown=$user:$user backup-restore.py .
+
+# Install Python dependencies
+RUN set -ex && \
+    pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 ENTRYPOINT ["python3", "backup-restore.py"]
