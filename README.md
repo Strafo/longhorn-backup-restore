@@ -31,7 +31,7 @@ Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`. Default: `INFO`
 4. Selects the most recent completed backup
 5. Restores the volume using backup metadata (size, block size, backing image, etc.)
 
-## Example Kubernetes Job
+## Example Kubernetes Job and PV/PVC Manifests
 
 ```yaml
 apiVersion: batch/v1
@@ -56,6 +56,41 @@ spec:
               value: INFO
       restartPolicy: Never
   backoffLimit: 3
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: authelia-production-pv
+spec:
+  capacity:
+    storage: 10Mi
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  storageClassName: longhorn
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: driver.longhorn.io
+    volumeHandle: authelia-production-vol
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: authelia-production-pvc
+    namespace: authelia
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authelia-production-pvc
+  namespace: authelia
+spec:
+  volumeName: authelia-production-pv
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Mi
 ```
 
 ## Building
