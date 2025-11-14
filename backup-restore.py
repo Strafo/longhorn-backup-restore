@@ -6,6 +6,30 @@ import requests
 from requests.exceptions import RequestException
 
 
+def check_volume_exists(longhorn_url, volume_name):
+    """Check if a volume already exists"""
+    url = f"{longhorn_url}/v1/volumes/{volume_name}"
+    logging.debug("Checking if volume exists: %s", url)
+
+    try:
+        response = requests.get(url, timeout=30)
+        if response.status_code == 200:
+            volume_data = response.json()
+            logging.debug("Volume exists: %s",
+                          json.dumps(volume_data, indent=2))
+            return True, volume_data
+        elif response.status_code == 404:
+            logging.debug("Volume does not exist")
+            return False, None
+        else:
+            logging.warning("Unexpected status code %d when checking volume",
+                            response.status_code)
+            return False, None
+    except RequestException as e:
+        logging.debug("Volume does not exist or error checking: %s", e)
+        return False, None
+
+
 def get_backup_volumes(longhorn_url):
     """Fetch all backup volumes from Longhorn API"""
     url = f"{longhorn_url}/v1/backupvolumes"
@@ -139,6 +163,23 @@ def main():
     if not volumeHandle:
         logging.error("VOLUME_HANDLE environment variable is not set")
         raise ValueError("VOLUME_HANDLE environment variable is not set")
+
+    # Check if volume already exists
+    logging.info("Checking if volume '%s' already exists...", volumeHandle)
+    volume_exists, existing_volume = check_volume_exists(
+        longhornUrl, volumeHandle)
+
+    if volume_exists:
+        logging.info(
+            "Volume '%s' already exists, skipping restore", volumeHandle)
+        logging.info("Volume state: %s", existing_volume.get('state'))
+        logging.info("Volume ready: %s", existing_volume.get('ready'))
+        logging.info("Volume size: %s bytes", existing_volume.get('size'))
+        logging.info("Nothing to do, exiting successfully")
+        return existing_volume
+
+    logging.info(
+        "Volume '%s' does not exist, proceeding with restore", volumeHandle)
 
     # Fetch all backup volumes
     logging.info("Fetching backup volumes...")
